@@ -1,0 +1,492 @@
+---
+title: Lloyd data science challenge - Predicting likelihood of customers paying back
+  their loan
+author: "Kaede Hasegawa"
+date: '2022-11-17'
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Downloading packages and dataset
+
+dataO <- read.csv("data.csv")
+
+library(broom)
+library(ez)
+library(Hmisc)
+library(irr)
+library(lme4)
+library(lmerTest)
+library(pscl)
+library(psych)
+library(ResourceSelection)
+library(tidyverse)
+library(lsr)
+library(car)
+
+data <- na.omit(dataO)
+data <- data %>% mutate(loan_status_bi=dplyr::recode(loan_status, "Fully Paid" = 1, "Charged Off" = 0)) %>% mutate(loan_status_bi=as.numeric(loan_status_bi))
+dataO <- dataO %>% mutate(loan_status_bi=dplyr::recode(loan_status, "Fully Paid" = 1, "Charged Off" = 0)) %>% mutate(loan_status_bi=as.numeric(loan_status_bi))
+```
+
+
+
+From the given dataset, this report aims to:
+
+1.) Look at which variables seems to be significant predictors of likelihood of customers paying back
+
+2.) Create a model with all those variables to accurately predict customers' likeliness to pay back as possible
+
+This will be done by creating multiple models using different methods and compare those models to pick the best predicting model:
+
+Method 1 - Identify significant predictors individually and combine them into one model
+
+Method 2 - Put all predictors in one model first and remove any non significant predictors
+
+# Model 1 - formulated using method 1
+
+
+
+## Part 1: Identifying significant predictors
+
+
+
+The outcome variable will be loan_status (Fully Paid or Charged off), which are bianry categorical data. 
+For both categorical and numerical predictors, logistic regression will be used to check the significance of each variables.
+(Unfortunately, I do not know alternative statistical testing when assumptions on standardised residuals and cook's distance, so I will not test them)
+
+
+
+### The predictors which are significant (p<.05):
+
+
+Categorical:
+
+* term: The number of payments on the loan. Values are in months and can be either 36 or 60. (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ term, data=data, family=binomial)
+summary(logr)
+```
+* emp_length: Employment length in years (p<.02)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ emp_length, data=data, family=binomial)
+summary(logr)
+```
+
+Numerical:
+
+* annual_inc: The annual income provided by the borrower during registration (p<.003)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ annual_inc, data=data, family=binomial)
+summary(logr)
+```
+* installment: The monthly payment owed by the borrower if the loan originates. (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ installment, data=data, family=binomial)
+summary(logr)
+```
+* loan_amnt: The listed amount of the loan applied for by the borrower (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ loan_amnt, data=data, family=binomial)
+summary(logr)
+```
+* avg_cur_bal: Average current balance of all current credit lending products / accounts (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ avg_cur_bal, data=data, family=binomial)
+summary(logr)
+```
+* inq_last_12m: Number of credit inquiries (searches) in past 12 months (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ inq_last_12m, data=data, family=binomial)
+summary(logr)
+```
+* max_bal_bc: Maximum current balance owed on all revolving accounts (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ max_bal_bc, data=data, family=binomial)
+summary(logr)
+```
+* mo_sin_old_rev_tl_op: Months since oldest revolving account opened (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ mo_sin_old_rev_tl_op, data=data, family=binomial)
+summary(logr)
+```
+* mo_sin_rcnt_tl: Months since most recent account opened (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ mo_sin_rcnt_tl, data=data, family=binomial)
+summary(logr)
+```
+* mort_acc: Number of mortgage accounts (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ mort_acc, data=data, family=binomial)
+summary(logr)
+```
+* num_tl_op_past_12m: Number of accounts 90 or more days past due in last 24 months (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ num_tl_op_past_12m, data=data, family=binomial)
+summary(logr)
+```
+* pub_rec_bankruptcies: Number of public record bankruptcies (p<.001)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ pub_rec_bankruptcies, data=data, family=binomial)
+summary(logr)
+```
+
+
+
+### The predictors which are not significant (p>.05):
+
+
+Categorical:
+
+* addr_state: The US state provided by the borrower in the loan application (p=1.00)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ addr_state, data=data, family=binomial)
+summary(logr)
+```
+* emp_title: The job title supplied by the Borrower when applying for the loan (p=.23) - for some reason, logistic regression did not work for this variable so chi-square test is used instead
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+chisq.test(x=data %>% pull(purpose), y=data %>% pull(loan_status)) %>% tidy()
+```
+* home_ownership: The home ownership status provided by the borrower during registration (p=.62)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ home_ownership, data=data, family=binomial)
+summary(logr)
+```
+* purpose: A category provided by the borrower for the loan request.(p=.30) - some were significant, but overall chi-square test said not significant (p=.09)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ purpose, data=data, family=binomial)
+summary(logr)
+
+chisq.test(x=data %>% pull(purpose), y=data %>% pull(loan_status)) %>% tidy()
+```
+
+
+Numerical: 
+
+* int_rate: Interest Rate on the loan (p=1.00)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ int_rate, data=data, family=binomial)
+summary(logr)
+```
+* mo_sin_old_il_acct: Months since oldest bank installment account opened (p=.69)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ mo_sin_old_il_acct, data=data, family=binomial)
+summary(logr)
+```
+* mo_sin_rcnt_rev_tl_op: Months since most recent revolving account opened (p<.14)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ mo_sin_rcnt_rev_tl_op, data=data, family=binomial)
+summary(logr)
+```
+* mths_since_last_delinq: The number of months since the borrower's last delinquency (missed payment) (p=.15)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ mths_since_last_delinq, data=data, family=binomial)
+summary(logr)
+```
+* num_bc_tl: Number of bankcard accounts (p=.52)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ num_bc_tl, data=data, family=binomial)
+summary(logr)
+```
+* num_il_tl: Number of installment accounts (p=.13)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ num_il_tl, data=data, family=binomial)
+summary(logr)
+```
+* num_op_rev_tl: Number of open revolving accounts (p=.51)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ num_op_rev_tl, data=data, family=binomial)
+summary(logr)
+```
+* num_tl_90g_dpd_24m: Number of accounts 90 or more days past due in last 24 months (p=0.06)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ num_tl_90g_dpd_24m, data=data, family=binomial)
+summary(logr)
+```
+* open_acc: The number of open credit lines in the borrower's credit file (p=.47)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ open_acc, data=data, family=binomial)
+summary(logr)
+```
+* percent_bc_gt_75: Percentage of all bankcard accounts > 75% of limit (p=.82)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ percent_bc_gt_75, data=data, family=binomial)
+summary(logr)
+```
+* total_acc: The total number of credit lines currently in the borrower's credit file (p=.85)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ total_acc, data=data, family=binomial)
+summary(logr)
+```
+* total_bal_ex_mort: Total credit balance excluding mortgage (p=.08)
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+logr <- glm(loan_status_bi ~ total_bal_ex_mort, data=data, family=binomial)
+summary(logr)
+```
+
+
+
+## Part 2: Building model using significant predictors
+
+Part 1 revealed all the significant predictors. Now using logistic regression, all of those predictors will be put into one model to find the best suiting model.
+
+
+
+### Model v1.0: All significant predictors
+
+All the predictors were significant except for home_ownership, annual_inc, mo_sin_rcnt_tl, and num_tl_op_past_12m. These will be removed in Model 2.
+
+Hosmer-Lemeshow test chi-square is not significnat (p=.47), which means the model is a good fit to the data. However, McFadden’s Pseudo R squared is very small (0.08), meaning only 8% of the variance is explained by the model. 
+```{r}
+# Model v1.0
+model1v1 <- glm(loan_status_bi ~ home_ownership + term + annual_inc + emp_length + installment + loan_amnt + avg_cur_bal + inq_last_12m + max_bal_bc + mo_sin_old_rev_tl_op + mo_sin_rcnt_tl + mort_acc + num_tl_op_past_12m + pub_rec_bankruptcies, data=data, family=binomial)
+summary(model1v1)
+```
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+# Odds ratio
+exp(coef(model1v1))
+
+# Hosmer-Lemeshow test chi-square (not significant: data fit the model well)
+hoslem.test(model1v1$y, fitted(model1v1)) 
+
+# McFadden’s Pseudo R squared (variance explained by the model)
+pR2(model1v1)
+```
+
+
+
+### Model v2.0: All predictors excluding non-significant predictors in model v1.0
+
+All of the predictors (term, emp_length, installment, loan_amnt, avg_cur_bal, inq_last_12m, max_bal_bc, mo_sin_old_rev_tl_op, mort_acc, pub_rec_bankruptcies) are significant. 
+
+Hosmer-Lemeshow test chi-square is not significnat (p=.17), which means the model is a good fit to the data. However, McFadden’s Pseudo R squared is very small again (0.08), meaning only 8% of the variance is explained by the model. In fact, it is slightly smaller than model 1, meaning less variance is explained.
+
+```{r}
+# Model v2.0
+model1v2 <- glm(loan_status_bi ~ term + emp_length + installment + loan_amnt + avg_cur_bal + inq_last_12m + max_bal_bc + mo_sin_old_rev_tl_op + mort_acc + pub_rec_bankruptcies, data=data, family=binomial)
+summary(model1v2)
+```
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+# Odds ratio
+exp(coef(model1v2))
+
+# Hosmer-Lemeshow test chi-square (not significant: data fit the model well)
+hoslem.test(model1v2$y, fitted(model1v2)) 
+
+# McFadden’s Pseudo R squared (variance explained by the model)
+pR2(model1v2)
+```
+
+
+
+### Comparing Model v1.0 and v2.0
+
+Since ANOVA between 2 models (model1v2, model1v1) were not significant (p=.42), this means addition of the variables in model v1.0 were not worth the cost of increased degrees of freedom to fit the model better. Therefore, Model v2.0 is a better model and will be used to compare with model 2 below.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+anova_model1 <- anova(model1v2, model1v1, test='Chisq')
+anova_model1
+```
+
+
+
+# Model 2 - formulated using method 2
+
+
+
+## Model v1.0: Include all the predictors
+
+When logistic regression was conducted with all the predictors, these variables were not significant (p>.05):
+
+Variables that were significant in model 1 individual analysis: annual_inc, home_ownership, inq_last_12m, mo_sin_old_rev_tl_op, mo_sin_rcnt_tl, mort_acc, num_tl_op_past_12m, 
+
+Variables that were also not significant in model 1 individual analysis: addr_state, purpose, int_rate, mo_sin_rcnt_rev_tl_op, num_bc_tl, num_il_tl, num_op_rev_tl, num_tl_90g_dpd_24m, open_acc, percent_bc_gt_75, total_acc, total_bal_ex_mort
+
+These variables will be removed from next updated model.
+
+Like shown, significant and non significant variables are very different in model 1 and 2. 
+
+```{r}
+# Model with all variables
+model2v1 <- glm(loan_status_bi ~ addr_state + annual_inc + term + emp_length + home_ownership+ installment + loan_amnt + purpose + int_rate + avg_cur_bal + inq_last_12m + max_bal_bc + mo_sin_old_il_acct + mo_sin_old_rev_tl_op + mo_sin_rcnt_rev_tl_op + mo_sin_rcnt_tl + mort_acc + mths_since_last_delinq + num_bc_tl + num_il_tl + num_op_rev_tl + num_tl_90g_dpd_24m + num_tl_op_past_12m + open_acc + percent_bc_gt_75 + pub_rec_bankruptcies + total_acc + total_bal_ex_mort, data=data, family=binomial)
+options(max.print=999999)
+summary(model2v1)
+```
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+# Odds ratio
+exp(coef(model2v1))
+
+# Hosmer-Lemeshow test chi-square (not significant: data fit the model well)
+hoslem.test(model2v1$y, fitted(model2v1)) 
+
+# McFadden’s Pseudo R squared (variance explained by the model)
+pR2(model2v1)
+```
+
+
+
+## Model v2.0: Remove all non-significant predictors
+
+All of the variables (term, emp_length, installment, loan_amnt, avg_cur_bal, max_bal_bc, mo_sin_old_rev_tl_op, mths_since_last_delinq, pub_rec_bankruptcies) in this model is significant. 
+
+Hosmer-Lemeshow test chi-square is not significnat (p=.25), which means the model is a good fit to the data. However, McFadden’s Pseudo R squared is very small again (0.07), meaning only 7% of the variance is explained by the model. This is smaller than model 1 v2.0, meaning less variance is explained.
+
+```{r}
+# Model without non-significant predictors
+model2v2 <- glm(loan_status_bi ~ term + emp_length + installment + loan_amnt + avg_cur_bal + max_bal_bc + mo_sin_old_rev_tl_op + mths_since_last_delinq + pub_rec_bankruptcies, data=data, family=binomial)
+summary(model2v2)
+```
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+# Odds ratio
+exp(coef(model2v2))
+
+# Hosmer-Lemeshow test chi-square (not significant: data fit the model well)
+hoslem.test(model2v2$y, fitted(model2v2)) 
+
+# McFadden’s Pseudo R squared (variance explained by the model)
+pR2(model2v2)
+```
+
+
+
+# Comparing models
+
+Comparison of predictors used in model 1 and 2 are:
+
+* Predictors used in both models: term, emp_length, installment, loan_amnt, avg_cur_bal, max_bal_bc, mo_sin_old_rev_tl_op, pub_rec_bankruptcies
+* Predictors used only in model 1: inq_last_12m, mort_acc
+* Predictors used only in model 2: mths_since_last_delinq
+
+These highlight there is quite a difference between 2 models, indicating the importance of choosing correct method when building model. 
+
+
+
+## Model 3 - only using predictors which were significant in both model 1 and 2
+
+All of the variables (term, emp_length, installment, loan_amnt, avg_cur_bal, max_bal_bc, mo_sin_old_rev_tl_op, pub_rec_bankruptcies) in this model is significant. 
+
+Hosmer-Lemeshow test chi-square is not significant (p=.28), which means the model is a good fit to the data. However, McFadden’s Pseudo R squared is very small again (0.07), meaning only 7% of the variance is explained by the model. This is the smallest value out of all models, meaning least variance is explained.
+
+```{r}
+# Model without non-significant predictors
+model3 <- glm(loan_status_bi ~ term + emp_length + installment + loan_amnt + avg_cur_bal + max_bal_bc + mo_sin_old_rev_tl_op + pub_rec_bankruptcies, data=data, family=binomial)
+summary(model3)
+```
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+# Odds ratio
+exp(coef(model3))
+
+# Hosmer-Lemeshow test chi-square (not significant: data fit the model well)
+hoslem.test(model3$y, fitted(model3)) 
+
+# McFadden’s Pseudo R squared (variance explained by the model)
+pR2(model3)
+```
+
+
+ANOVA was conducted between 2 models: model 1 & 3 and model 2 & 3. Both ANOVA were significant (p<.001 and p<.006 respectively), which means that additional variables in model 1 and 2 worth the cost of increased degrees of freedom to fit the model better. Therefore, Model 3 is not the best model and will not be used.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+anova12 <- anova(model3, model1v2, test='Chisq')
+anova12
+```
+
+
+Since ANOVA between 2 models (model1v2, model1v1) were not significant (p=.42), this means addition of the variables in model v1.0 were not worth the cost of increased degrees of freedom to fit the model better. Therefore, Model v2.0 is a better model and will be used to compare with model 2 below.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+anova13 <- anova(model3, model2v2, test='Chisq')
+anova13
+```
+
+
+
+## Comparison between model 1 and 2
+
+Normally, variance explained by model (McFadden’s Pseudo R squared) will be the most important thing when comparing models. In this case, model 1 (0.08) is slightly bigger than model 2 (0.07), meaning model 1 is better model.
+ 
+Although one of the model is not nested on the other, meaning ANOVA is not appropriate, ANOVA between 2 models (model1v2, model2v2) were significant (p<.003), this can mean that model 1 are better fitting model than model 2.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+anova <- anova(model1v2, model2v2, test='Chisq')
+anova
+```
+
+#### Model 1 is the best built model to predict customer's likelihood of paying back their loan.
+
+
+### More details about Model 1 (on variables)
+
+Odds ratio coefficients:
+
+* term: 0.17, meaning customers are more likely to pay by 0.17x when term is 60 than 36 months.
+* emp_length: customers are more likely to pay by x 2.93 for < 1 year, 2.47 for 1 year, 2.62 for 2 years, 2.56 for 3 years, 2.62 for 4 years, 2.13 for 5 years, 3.08 for 6 years,  2.18 for 7 years, 2.18 for 8 years, 3.17 for 9 years, 2.27 for 10+ years
+* installment: 0.99, meaning each additional 1 monthly payment increased the odds ratio of customers paying back by 0.99x
+* loan_amnt: 1.00, meaning each additional 1 monthly payment increased the odds ratio of customers paying back by 1.00x
+* avg_cur_bal: 1.00, meaning each additional 1 current balance increased the odds ratio of customers paying back by 1.00x
+* inq_last_12m: 0.96, meaning each additional 1 credit inquiry in last 12 months increased the odds ratio of customers paying back by 0.96x
+* max_bal_bc: 1.00, meaning each additional 1 current balance owed on all revolving accounts increased the odds ratio of customers paying back by 1.00x
+* mo_sin_old_rev_tl_op: 1.00, meaning each additional 1 months since oldest revolving account opened increased the odds ratio of customers paying back by 1.00x
+* mort_acc: 1.08, meaning each additional 1 mortgage accounts increased the odds ratio of customers paying back by 1.08x
+* pub_rec_bankruptcies: 0.75, meaning each additional 1 public record bankruptcies increased the odds ratio of customers paying back by 0.75x
+
+
+
+# Simulation
+
+Since model 1 seems to be the best model, model 1 was simulated using data that were omitted in the model formulation due to missing data, but has all data for the predictor variables.
+1.) Using those data, predicted loan status will be calculated using model 1
+2.) Those predicted loan status will be compared to actual loan status to see how accurately they predicted.
+
+The result showed that out of 4720 data, 1089 (23.07%) failed to predict and 3631 (76.93%) successfully predicted loan status, which means majority of the data was correctly predicted using model 1. Logistic regression between calculated loan status and actual loan status showed that calculated loan status is a significant predictor, with extremely well fit of data to the model (p=1.00). However, McFadden’s Pseudo R squared is very small again (0.07), meaning only 7% of the variance is explained by the model, indicating that there might be other variables relevant to predicting loan status.
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+# Produce dataset with data that were omitted due to missing data (but has all data for all predictors in model 1) for simulation
+simulationdat <- dataO %>% select(id, loan_status_bi, term, emp_length, installment, loan_amnt, avg_cur_bal, inq_last_12m, max_bal_bc, mo_sin_old_rev_tl_op, mort_acc, pub_rec_bankruptcies) %>% na.omit()
+
+simulationdat <- anti_join(simulationdat, data, by=("id"))
+```
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+# Predict if customers returned their loan using above dataset
+prediction <- predict(object = model1v2, newdata = simulationdat, type="response")
+
+simulationdat <- simulationdat %>% mutate(predict=prediction) %>% mutate(predict_bi=if_else(prediction < 0.5, 0, 1)) # since simulation will produce percentage, if it is above 50%, it will be considered that they are more likely to return, coded as 1.
+```
+
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+# Accuracy of the simulation
+
+# Absolute value of correctly predicted data
+accuracy <- ifelse(simulationdat$predict_bi == simulationdat$loan_status_bi, "successful", "fail")
+
+simulationdat <- simulationdat %>% mutate(accuracy = accuracy)
+simulationdat %>% count(accuracy)
+
+# Logistic regression
+simulate <- glm(predict_bi ~ loan_status_bi, data=simulationdat, family=binomial)
+summary(simulate)
+```
+```{r echo=FALSE, results=FALSE, warning=FALSE, message=FALSE}
+# Hosmer-Lemeshow test chi-square (not significant: data fit the model well)
+hoslem.test(simulate$y, fitted(simulate)) 
+
+# McFadden’s Pseudo R squared (variance explained by the model)
+pR2(simulate)
+```
+
+
+
+# Conclusion
+
+Model 1 was the best formulated model in my experimentation. However, if machine learning was used and computing every single combination (which unfortunately I did not have time to), there can be better model. 
+
